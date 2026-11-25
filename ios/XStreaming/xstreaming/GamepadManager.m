@@ -6,6 +6,8 @@
 @implementation GamepadManager {
     NSMutableArray *_connectedControllers;
     NSString *_currentScreen; //  添加成员变量记录当前屏幕
+    BOOL _motionReporting;    // whether controller motion is sent to JS (for motion aiming)
+    CFAbsoluteTime _motionLogged;
     NSLock *_controllerStreamLock;
     
     Controller *_oscController;
@@ -43,7 +45,7 @@ RCT_EXPORT_METHOD(setCurrentScreen:(NSString *)screenName)
 }
 
 - (NSArray<NSString *> *)supportedEvents {
-    return @[@"onController"];
+    return @[@"onController", @"onMotion"];
 }
 
 // 添加这个方法来确保在主线程上初始化
@@ -415,6 +417,8 @@ RCT_EXPORT_METHOD(setCurrentScreen:(NSString *)screenName)
                 }
             }
             
+            [self applyMotionReporting:controller];
+
             controller.extendedGamepad.valueChangedHandler = ^(GCExtendedGamepad *gamepad, GCControllerElement *element) {
                 Controller* limeController = [self->_controllers objectForKey:[NSNumber numberWithInteger:gamepad.controller.playerIndex]];
                 float leftStickX, leftStickY;
@@ -520,10 +524,64 @@ RCT_EXPORT_METHOD(setCurrentScreen:(NSString *)screenName)
     }
 }
 
+// Sends the controller's rotation rate and acceleration to JS as "onMotion", for
+// motion aiming. Values are passed on exactly as the GameController framework gives
+// them (rotation in radians a second, acceleration and gravity in g); the JS side
+// knows the axes. A DualSense reports motion only once its sensors are switched on.
+-(void) applyMotionReporting:(GCController*) controller
+{
+    GCMotion *motion = controller.motion;
+    if (motion == nil) {
+        return;
+    }
+    if (!_motionReporting || !motion.hasRotationRate) {
+        motion.valueChangedHandler = nil;
+        if (motion.sensorsRequireManualActivation) {
+            motion.sensorsActive = NO;
+        }
+        return;
+    }
+    if (motion.sensorsRequireManualActivation) {
+        motion.sensorsActive = YES;
+    }
+    __weak typeof(self) weakSelf = self;
+    motion.valueChangedHandler = ^(GCMotion *m) {
+        typeof(self) strongSelf = weakSelf;
+        if (strongSelf == nil || !strongSelf->_motionReporting) {
+            return;
+        }
+        GCRotationRate rate = m.rotationRate;
+        GCAcceleration accel = m.acceleration;
+        GCAcceleration gravity = m.gravity;
+        [strongSelf sendEventWithName:@"onMotion" body:@{
+            @"rx": @(rate.x), @"ry": @(rate.y), @"rz": @(rate.z),
+            @"ax": @(accel.x), @"ay": @(accel.y), @"az": @(accel.z),
+            @"gx": @(gravity.x), @"gy": @(gravity.y), @"gz": @(gravity.z),
+        }];
+        // Twice a second in the device log, to check the axes against a real controller.
+        CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+        if (now - strongSelf->_motionLogged > 0.5) {
+            strongSelf->_motionLogged = now;
+            NSLog(@"XSMotion rate %.3f %.3f %.3f accel %.3f %.3f %.3f gravity %.3f %.3f %.3f",
+                  rate.x, rate.y, rate.z, accel.x, accel.y, accel.z, gravity.x, gravity.y, gravity.z);
+        }
+    };
+}
+
+RCT_EXPORT_METHOD(setMotionReporting:(BOOL)enabled) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self->_motionReporting = enabled;
+        for (GCController *controller in [GCController controllers]) {
+            [self applyMotionReporting:controller];
+        }
+    });
+}
+
 -(void) unregisterControllerCallbacks:(GCController*) controller
 {
     if (controller != NULL) {
         controller.controllerPausedHandler = NULL;
+        controller.motion.valueChangedHandler = nil;
         
         if (controller.extendedGamepad != NULL) {
             // Re-enable system gestures on the gamepad buttons now

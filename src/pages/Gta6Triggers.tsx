@@ -1,6 +1,6 @@
 import React from 'react';
 import {StyleSheet, View, ScrollView} from 'react-native';
-import {Button, Switch, Text, useTheme} from 'react-native-paper';
+import {Button, RadioButton, Switch, Text, useTheme} from 'react-native-paper';
 import {useTranslation} from 'react-i18next';
 import Slider from '@react-native-community/slider';
 import {getSettings, saveSettings} from '../store/settingStore';
@@ -9,6 +9,11 @@ import {
   Gta6Tuning,
   normaliseTuning,
 } from '../triggers/gta6Profile';
+import {
+  MOTION_TUNING,
+  MotionTuning,
+  normaliseMotionTuning,
+} from '../triggers/motionAim';
 
 const GROUPS: {id: 'foot' | 'vehicle'; title: string}[] = [
   {id: 'foot', title: 'On foot'},
@@ -29,12 +34,17 @@ function Gta6TriggersScreen() {
   const [enabled, setEnabled] = React.useState(
     () => !!getSettings().gta6_triggers,
   );
-  const [tuning, setTuning] = React.useState<Gta6Tuning>(() =>
-    normaliseTuning(getSettings().gta6_trigger_tuning),
-  );
+  // Trigger and motion values are kept together in one saved object.
+  const [tuning, setTuning] = React.useState<Gta6Tuning & MotionTuning>(() => ({
+    ...normaliseTuning(getSettings().gta6_trigger_tuning),
+    ...normaliseMotionTuning(getSettings().gta6_trigger_tuning as any),
+  }));
 
   // Every change is saved straight away, so a running stream picks it up.
-  const save = (nextEnabled: boolean, nextTuning: Gta6Tuning) => {
+  const save = (
+    nextEnabled: boolean,
+    nextTuning: Gta6Tuning & MotionTuning,
+  ) => {
     setEnabled(nextEnabled);
     setTuning(nextTuning);
     saveSettings({
@@ -85,10 +95,71 @@ function Gta6TriggersScreen() {
         </View>
       ))}
 
+      <Text variant="titleMedium" style={styles.group}>
+        {t('Motion aiming')}
+      </Text>
+      <Text variant="bodySmall" style={styles.note}>
+        {t('gta6_motion_note')}
+      </Text>
+      {MOTION_TUNING.map(item => {
+        const value = tuning[item.key];
+        const change = (next: number) =>
+          save(enabled, {...tuning, [item.key]: next});
+        if (item.choices) {
+          return (
+            <View key={item.key}>
+              <Text style={styles.rowLabel}>{t(item.label)}</Text>
+              <RadioButton.Group
+                value={String(value)}
+                onValueChange={next => change(Number(next))}>
+                {item.choices.map((choice, index) => (
+                  <RadioButton.Item
+                    key={choice}
+                    label={t(choice)}
+                    value={String(index)}
+                  />
+                ))}
+              </RadioButton.Group>
+            </View>
+          );
+        }
+        if (item.max === 1) {
+          return (
+            <View key={item.key} style={styles.switchRow}>
+              <Text style={styles.rowLabel}>{t(item.label)}</Text>
+              <Switch
+                value={!!value}
+                onValueChange={on => change(on ? 1 : 0)}
+              />
+            </View>
+          );
+        }
+        return (
+          <View key={item.key}>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>{t(item.label)}</Text>
+              <Text>{`${value}${item.unit ?? '%'}`}</Text>
+            </View>
+            <Slider
+              style={styles.slider}
+              value={value}
+              minimumValue={item.min}
+              maximumValue={item.max}
+              step={1}
+              onValueChange={change}
+              minimumTrackTintColor={theme.colors.primary}
+              maximumTrackTintColor="grey"
+            />
+          </View>
+        );
+      })}
+
       <Button
         mode="outlined"
         style={styles.reset}
-        onPress={() => save(enabled, normaliseTuning())}>
+        onPress={() =>
+          save(enabled, {...normaliseTuning(), ...normaliseMotionTuning()})
+        }>
         {t('Reset to defaults')}
       </Button>
     </ScrollView>
@@ -107,6 +178,12 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     flex: 1,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginVertical: 6,
   },
   note: {
     marginTop: 4,

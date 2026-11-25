@@ -121,6 +121,8 @@ export default {
     gta6_triggers_desc:
       "Trigger break and recoil on foot, pedal resistance and impact jolts in a vehicle, derived from the game's rumble. Works with a DualSense over Bluetooth or USB.",
     gta6_triggers_note: 'Changes apply straight away, also to a running stream.',
+    gta6_motion_note:
+      'Turning and tilting the controller moves the aim. Needs Gamepad kernel set to Native.',
     DualSense_adaptive_trigger_left: 'Set DualSense Left Trigger',
     DualSense_adaptive_trigger_left_desc:
       'You can set the DualSense left trigger to resistance/trigger/automatic trigger (to enable this feature, you need to turn on Android overlay driver (Settings - Overlay Android Controller Support - Enable), and connect the DualSense controller via cable)',

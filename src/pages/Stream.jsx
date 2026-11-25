@@ -28,6 +28,7 @@ import XcloudApi from '../xCloud';
 import {useSelector} from 'react-redux';
 import {getSettings, saveSettings} from '../store/settingStore';
 import {
+  gta6AimPush,
   gta6Rumble,
   startGta6Triggers,
   stopGta6Triggers,
@@ -196,12 +197,12 @@ function StreamScreen({navigation, route}) {
     startGta6Triggers(_settings);
 
     // Controller
+    const rightStick = {x: 0, y: 0};
     if (_settings.gamepad_kernal === 'Native') {
       log.info('Entry native mode');
       controllerEventListener.current = eventEmitter.addListener(
         'onController',
         params => {
-          console.log('native controller:', params);
           const {
             buttonFlags,
             leftTrigger,
@@ -226,12 +227,16 @@ function StreamScreen({navigation, route}) {
           // Joystick
           gpState.LeftThumbXAxis = normaliseAxis(leftStickX);
           gpState.LeftThumbYAxis = normaliseAxis(-leftStickY);
-          gpState.RightThumbXAxis = normaliseAxis(rightStickX);
-          gpState.RightThumbYAxis = normaliseAxis(-rightStickY);
+          rightStick.x = normaliseAxis(rightStickX);
+          rightStick.y = normaliseAxis(-rightStickY);
         },
       );
 
       timer.current = setInterval(() => {
+        // The thumb's stick position plus the motion-aim push.
+        const aim = gta6AimPush();
+        gpState.RightThumbXAxis = Math.max(-1, Math.min(1, rightStick.x + aim[0]));
+        gpState.RightThumbYAxis = Math.max(-1, Math.min(1, rightStick.y + aim[1]));
         postData2Webview('gamepad', gpState);
       }, 4);
     }

@@ -46,6 +46,11 @@ export class Gta6TriggerDriver {
     this.send = send;
   }
 
+  /** Whether the profile currently believes the player is in a vehicle. */
+  get vehicle() {
+    return this.profile.vehicle;
+  }
+
   start() {
     this.configure(getSettings());
     this.subscription = DeviceEventEmitter.addListener(
