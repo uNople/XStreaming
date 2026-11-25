@@ -25,6 +25,13 @@ let subscriptions: EmitterSubscription[] = [];
 
 const DEGREES = 180 / Math.PI;
 
+// Rotate GameController's frame about the pitch axis into the desktop HID frame.
+const dualSenseAxes = (
+  x: number,
+  y: number,
+  z: number,
+): [number, number, number] => [x, z, -y];
+
 type MotionReading = {
   time: number;
   rx: number;
@@ -72,11 +79,15 @@ export const startGta6Triggers = (
     );
     subscriptions.push(
       events.addListener('onMotion', (reading: MotionReading) => {
-        // Match SDL's GameController-to-DualSense mapping. Apple's acceleration
-        // points down at rest, while the DualSense HID accelerometer points up.
+        // Yaw projects the gyro onto up, so both vectors need the same axes.
+        // Negate Apple's acceleration to obtain the desktop's up vector.
         aim.sample(
-          [reading.rx * DEGREES, reading.rz * DEGREES, -reading.ry * DEGREES],
-          [-reading.ax, -reading.ay, -reading.az],
+          dualSenseAxes(
+            reading.rx * DEGREES,
+            reading.ry * DEGREES,
+            reading.rz * DEGREES,
+          ),
+          dualSenseAxes(-reading.ax, -reading.ay, -reading.az),
           reading.leftTrigger * 255,
           [reading.rightStickX, -reading.rightStickY],
           reading.time,

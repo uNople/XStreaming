@@ -38,8 +38,8 @@ const still = {
   ry: 0,
   rz: 0,
   ax: 0,
-  ay: -1,
-  az: 0,
+  ay: 0,
+  az: -1,
   leftTrigger: 1,
   rightStickX: 0,
   rightStickY: 0,
@@ -49,14 +49,22 @@ type Vector3 = [number, number, number];
 type SendAim = (push: [number, number]) => void;
 
 describe('iOS motion aiming', () => {
-  const turns: [string, typeof still, Vector3, Vector3][] = [
-    ['flat', {...still, rz: 1}, [0, 1, 0], [0, 1, 0]],
-    ['upright', {...still, ry: 1, ay: 0, az: 1}, [0, 0, -1], [0, 0, -1]],
-    ['pitch', {...still, rx: 0.5}, [0.5, 0, 0], [0, 1, 0]],
+  const turns: [string, typeof still, Vector3, Vector3, [number, number]][] = [
+    ['flat left pan', {...still, rz: 1}, [0, 1, 0], [0, 1, 0], [-1, 0]],
+    ['flat right pan', {...still, rz: -1}, [0, -1, 0], [0, 1, 0], [1, 0]],
+    [
+      'upright left pan',
+      {...still, ry: 1, ay: -1, az: 0},
+      [0, 0, -1],
+      [0, 0, -1],
+      [-1, 0],
+    ],
+    ['pitch up', {...still, rx: 0.5}, [0.5, 0, 0], [0, 1, 0], [0, -1]],
+    ['sideways roll', {...still, ry: 0.5}, [0, 0, -0.5], [0, 1, 0], [0, 0]],
   ];
   test.each(turns)(
     'matches the desktop input for a %s turn',
-    (_, reading, radians, up) => {
+    (_, reading, radians, up, direction) => {
       const sendAim = jest.fn<SendAim>();
       const reference = new MotionAim();
       const [x, y, z] = radians;
@@ -79,7 +87,9 @@ describe('iOS motion aiming', () => {
         expect(sendAim).toHaveBeenLastCalledWith(reference.advance(time));
       }
       expect(sendAim).toHaveBeenCalledTimes(40);
-      expect(sendAim.mock.calls[39][0].some(axis => axis < 0)).toBe(true);
+      expect(
+        sendAim.mock.calls[39][0].map(axis => Math.sign(axis) || 0),
+      ).toEqual(direction);
     },
   );
 
