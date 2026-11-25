@@ -28,6 +28,12 @@ import {VIRTUAL_MACRO_BUTTON_NAME} from '../utils/virtualMacro';
 import sessionStatsTracker from '../utils/sessionStatsTracker';
 import {getSettings} from '../store/settingStore';
 import {
+  gta6Rumble,
+  gta6TriggerPositions,
+  startGta6Triggers,
+  stopGta6Triggers,
+} from '../triggers/gta6Android';
+import {
   suspendGamepadNavigation,
   resumeGamepadNavigation,
 } from '../utils/useGamepadNavigation';
@@ -623,6 +629,9 @@ function NanoStreamScreen({navigation, route}: any) {
     };
 
     if (isUsbMode) {
+      if (route.params?.usbController === DUALSENSE) {
+        startGta6Triggers(settings);
+      }
       usbGpEventListener.current = eventEmitter.addListener(
         'onGamepadReport',
         params => {
@@ -643,6 +652,7 @@ function NanoStreamScreen({navigation, route}: any) {
           }
 
           inputStateRef.current.buttons.LeftTrigger = Number(leftTrigger || 0);
+          gta6TriggerPositions(leftTrigger, rightTrigger);
           inputStateRef.current.buttons.RightTrigger = Number(
             rightTrigger || 0,
           );
@@ -788,6 +798,7 @@ function NanoStreamScreen({navigation, route}: any) {
 
     return () => {
       usbGpEventListener.current && usbGpEventListener.current.remove();
+      stopGta6Triggers();
       gpDownEventListener.current && gpDownEventListener.current.remove();
       gpUpEventListener.current && gpUpEventListener.current.remove();
       dpDownEventListener.current && dpDownEventListener.current.remove();
@@ -970,6 +981,9 @@ function NanoStreamScreen({navigation, route}: any) {
       const isUsbMode = !!route.params?.isUsbMode;
       if (isUsbMode) {
         if (route.params?.usbController === DUALSENSE) {
+          if (gta6Rumble(rumbleData, rumbleData.duration)) {
+            return;
+          }
           let weakMagnitude = Number(rumbleData.weakMagnitude || 0) * 255;
           let strongMagnitude = Number(rumbleData.strongMagnitude || 0) * 255;
           if (weakMagnitude > 255) {

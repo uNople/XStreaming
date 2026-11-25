@@ -27,6 +27,12 @@ import {useSelector} from 'react-redux';
 import XcloudApi from '../xCloud';
 import WebApi from '../web';
 import {getSettings, saveSettings} from '../store/settingStore';
+import {
+  gta6Rumble,
+  gta6TriggerPositions,
+  startGta6Triggers,
+  stopGta6Triggers,
+} from '../triggers/gta6Android';
 import {saveSettings as saveGamepadLayout} from '../store/gamepadStore';
 import {useTranslation} from 'react-i18next';
 import webRTCClient from '../webrtc';
@@ -1077,7 +1083,7 @@ export function NativeStreamScreenBase({
     if (isUsbMode) {
       log.info('Entry usb mode');
       log.info('Usb controller: ' + usbController);
-      if (usbController === DUALSENSE) {
+      if (usbController === DUALSENSE && !startGta6Triggers(_settings)) {
         UsbRumbleManager.setDsController(
           16,
           124,
@@ -1118,6 +1124,7 @@ export function NativeStreamScreenBase({
 
           // Trigger
           gpState.LeftTrigger = leftTrigger;
+          gta6TriggerPositions(leftTrigger, rightTrigger);
           gpState.RightTrigger = rightTrigger;
 
           // Joystick
@@ -1778,6 +1785,9 @@ export function NativeStreamScreenBase({
         if (isUsbMode) {
           // console.log('isUsbMode:', isUsbMode);
           if (route.params?.usbController === DUALSENSE) {
+            if (gta6Rumble(rumbleData, rumbleData.duration)) {
+              return;
+            }
             let weakMagnitude = rumbleData.weakMagnitude * 255;
             let strongMagnitude = rumbleData.strongMagnitude * 255;
             if (weakMagnitude > 255) {
@@ -2207,6 +2217,7 @@ export function NativeStreamScreenBase({
       }
       webrtcClient && webrtcClient.close();
       usbGpEventListener.current && usbGpEventListener.current.remove();
+      stopGta6Triggers();
       gpDownEventListener.current && gpDownEventListener.current.remove();
       gpUpEventListener.current && gpUpEventListener.current.remove();
       dpDownEventListener.current && dpDownEventListener.current.remove();

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run the unit tests (Jest).
+set -euo pipefail
+cd "$(dirname "$0")"
+COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack yarn jest "$@"

@@ -379,6 +379,10 @@ export default {
     y_axies: 'Y axis',
     all_axies: 'All axes',
     xy_axies: 'Swap X/Y',
+    gta6_triggers_desc:
+      "Trigger break and recoil on foot, pedal resistance and impact jolts in a vehicle, derived from the game's rumble. Needs the DualSense on a USB cable with the USB driver bound.",
+    gta6_triggers_note:
+      'Replaces the left and right trigger effects above while a stream runs. Changes apply straight away.',
     DualSense_adaptive_trigger_left: 'Set DualSense left trigger',
     DualSense_adaptive_trigger_left_desc:
       'Set the DualSense left trigger to resistance/trigger/automatic rifle trigger. To enable this, turn on Android override driver in Settings and connect the DualSense controller by cable.',

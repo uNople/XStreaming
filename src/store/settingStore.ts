@@ -1,3 +1,4 @@
+import {Gta6Tuning, normaliseTuning} from '../triggers/gta6Profile';
 import { storage } from './mmkv';
 import { debugFactory } from '../utils/debug';
 import { NativeModules, DeviceEventEmitter, Platform } from 'react-native';
@@ -86,6 +87,8 @@ export type Settings = {
   left_trigger_effects: [];
   right_trigger_type: number;
   right_trigger_effects: [];
+  gta6_triggers: boolean;
+  gta6_trigger_tuning: Gta6Tuning;
   display_options: DisplayOptions;
   fsr_display_options: DisplayOptions;
   hold_buttons: [];
@@ -170,6 +173,8 @@ const defaultSettings: Settings = {
   left_trigger_effects: [],
   right_trigger_type: 0,
   right_trigger_effects: [],
+  gta6_triggers: true,
+  gta6_trigger_tuning: normaliseTuning(),
   ipv6: false,
   check_update: true,
   power_on: false,

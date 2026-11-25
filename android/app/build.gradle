@@ -20,7 +20,8 @@ react {
     //   The list of variants to that are debuggable. For those we're going to
     //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
-    debuggableVariants = ["devDebug", "prodDebug"]
+    // -PbundleInDebug packs the JS into debug builds, so they run without a Metro server.
+    debuggableVariants = project.hasProperty("bundleInDebug") ? [] : ["devDebug", "prodDebug"]
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
@@ -176,9 +177,11 @@ def nanoRustTargetMap = [
 ]
 
 def nanoRustHostTag = { ndkDir ->
-    def armTag = file("${ndkDir}/toolchains/llvm/prebuilt/darwin-arm64")
-    if (armTag.exists()) {
-        return "darwin-arm64"
+    // The NDK ships one prebuilt toolchain per host: use whichever this machine has.
+    for (tag in ["darwin-arm64", "linux-x86_64"]) {
+        if (file("${ndkDir}/toolchains/llvm/prebuilt/${tag}").exists()) {
+            return tag
+        }
     }
     return "darwin-x86_64"
 }

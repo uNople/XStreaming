@@ -93,6 +93,20 @@ Run development build:
 npm run android
 ```
 
+### Scripts
+
+```
+./test              # unit tests (Jest)
+./build-android     # dev APK (com.dev.xstreaming) with the JS bundled in
+./deploy-android    # build, then install and start it on the adb device
+```
+
+`build-android` needs JDK 17, NDK 23.1.7779620, CMake 3.22.1 and Rust with the two Android ARM targets. It builds on Linux and macOS.
+
+### GTA 6 adaptive triggers (DualSense)
+
+Settings → DualSense → GTA 6 adaptive triggers. GTA 6 on Xbox sends body rumble only, so `src/triggers/gta6Profile.ts` derives the triggers from it: a trigger break and a recoil kick per shot on foot, pedal resistance and impact jolts in a vehicle. On Android this needs the DualSense on a USB cable with the USB driver bound.
+
 ## Development document
 
 1. [Auth](/docs/1.Auth.md)

@@ -224,6 +224,7 @@ function SettingsScreen({navigation}) {
         },
       }),
     );
+    list.push(() => navigation.navigate({name: 'Gta6Triggers'}));
     // server
     server.forEach(meta => {
       list.push(() => handleItemPress(meta.name));
@@ -567,6 +568,13 @@ function SettingsScreen({navigation}) {
                 },
               }),
             'ds5_right',
+          )}
+
+          {renderItem(
+            t('GTA 6 adaptive triggers'),
+            `${t('gta6_triggers_desc')}`,
+            () => navigation.navigate({name: 'Gta6Triggers'}),
+            'gta6_triggers',
           )}
         </React.Fragment>
 

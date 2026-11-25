@@ -29,6 +29,12 @@ import Spinner from '../components/Spinner';
 import XcloudApi from '../xCloud';
 import {useSelector} from 'react-redux';
 import {getSettings, saveSettings} from '../store/settingStore';
+import {
+  gta6Rumble,
+  gta6TriggerPositions,
+  startGta6Triggers,
+  stopGta6Triggers,
+} from '../triggers/gta6Android';
 import {saveSettings as saveGamepadLayout} from '../store/gamepadStore';
 import {getServerData} from '../store/serverStore';
 import {useTranslation} from 'react-i18next';
@@ -548,7 +554,7 @@ function StreamScreen({navigation, route}: any) {
     if (isUsbMode) {
       log.info('Entry usb mode');
       log.info('Usb controller: ' + usbController);
-      if (usbController === DUALSENSE) {
+      if (usbController === DUALSENSE && !startGta6Triggers(_settings)) {
         UsbRumbleManager.setDsController(
           16,
           124,
@@ -589,6 +595,7 @@ function StreamScreen({navigation, route}: any) {
 
           // Trigger
           gpState.LeftTrigger = leftTrigger;
+          gta6TriggerPositions(leftTrigger, rightTrigger);
           gpState.RightTrigger = rightTrigger;
 
           // Joystick
@@ -954,6 +961,7 @@ function StreamScreen({navigation, route}: any) {
       FullScreenManager.immersiveModeOff();
       stopVibrate();
       usbGpEventListener.current && usbGpEventListener.current.remove();
+      stopGta6Triggers();
       gpDownEventListener.current && gpDownEventListener.current.remove();
       gpUpEventListener.current && gpUpEventListener.current.remove();
       dpDownEventListener.current && dpDownEventListener.current.remove();
@@ -1261,6 +1269,10 @@ function StreamScreen({navigation, route}: any) {
       if (isUsbMode) {
         // console.log('isUsbMode:', isUsbMode);
         if (route.params?.usbController === DUALSENSE) {
+          // The web player divides the packet's duration by ten.
+          if (gta6Rumble(rumbleData, rumbleData.duration * 10)) {
+            return;
+          }
           let weakMagnitude = rumbleData.weakMagnitude * 255;
           let strongMagnitude = rumbleData.strongMagnitude * 255;
           if (weakMagnitude > 255) {

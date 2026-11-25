@@ -75,6 +75,7 @@ import CustomGamepadScreen from './pages/CustomGamepad';
 import HoldButtonsScreen from './pages/HoldButtons';
 import VirtualMacroSettingsScreen from './pages/VirtualMacroSettings';
 import Ds5SettingsScreen from './pages/Ds5Settings';
+import Gta6TriggersScreen from './pages/Gta6Triggers';
 import DeviceInfosScreen from './pages/DeviceInfos';
 import GamepadTestScreen from './pages/GamepadTest';
 import TransferScreen from './pages/Transfer';
@@ -244,6 +245,7 @@ const VirtualMacroSettingsBackgroundScreen = withPageBackground(
   VirtualMacroSettingsScreen,
 );
 const Ds5SettingsBackgroundScreen = withPageBackground(Ds5SettingsScreen);
+const Gta6TriggersBackgroundScreen = withPageBackground(Gta6TriggersScreen);
 const DeviceInfosBackgroundScreen = withPageBackground(DeviceInfosScreen);
 const GamepadTestBackgroundScreen = withPageBackground(GamepadTestScreen);
 const TransferBackgroundScreen = withPageBackground(TransferScreen);
@@ -663,6 +665,11 @@ function App() {
                   name="Ds5"
                   component={Ds5SettingsBackgroundScreen}
                   options={{title: t('DualSense')}}
+                />
+                <RootStack.Screen
+                  name="Gta6Triggers"
+                  component={Gta6TriggersBackgroundScreen}
+                  options={{title: t('GTA 6 adaptive triggers')}}
                 />
                 <RootStack.Screen
                   name="DeviceInfos"

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Build the dev APK (com.dev.xstreaming, installs beside the store app) with the
+# JS bundled in, so it runs without a Metro server.
+#
+#   ./build-android            build android/app/build/outputs/apk/dev/debug/*.apk
+#
+# Needs: JDK 17, the Android SDK with NDK 23.1.7779620 and CMake 3.22.1, Rust
+# with the aarch64-linux-android and armv7-linux-androideabi targets, Node 20+.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+if ! "${JAVA_HOME:-/nonexistent}/bin/java" -version 2>&1 | grep -q '"17\.'; then
+  for candidate in /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-17-openjdk; do
+    if [ -x "$candidate/bin/java" ]; then export JAVA_HOME="$candidate"; break; fi
+  done
+fi
+"$JAVA_HOME/bin/java" -version 2>&1 | grep -q '"17\.' || { echo "JDK 17 is required (set JAVA_HOME)." >&2; exit 1; }
+# The Android Gradle plugin runs whichever cmake comes first on PATH to read its
+# version, so put the SDK's own ahead of any shim.
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/cmake/3.22.1/bin:$PATH"
+
+# Dependencies. patch-package cannot parse one of the patch files, so apply the
+# patches with patch(1), which can; --forward skips those already applied.
+if [ ! -d node_modules/react-native ]; then
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack yarn install --mode=skip-build
+fi
+for file in patches/*.patch; do
+  patch -p1 --forward --silent -i "$file" >/dev/null || true
+done
+git checkout -- yarn.lock .yarn/install-state.gz 2>/dev/null || true
+
+cd android
+# Machine-specific paths (git-ignored). cmake.dir stops the Gradle plugin from
+# running a different cmake found on PATH.
+printf 'sdk.dir=%s\ncmake.dir=%s\n' "$ANDROID_HOME" "$ANDROID_HOME/cmake/3.22.1" > local.properties
+./gradlew assembleDevDebug -PbundleInDebug --max-workers="${BUILD_JOBS:-12}" "$@"
+ls -la app/build/outputs/apk/dev/debug/*.apk

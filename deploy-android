@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Build the dev APK and install it on the connected Android device (adb).
+#
+#   ./deploy-android [adb-serial]
+set -euo pipefail
+cd "$(dirname "$0")"
+adb="${ANDROID_HOME:-$HOME/Android/Sdk}/platform-tools/adb"
+./build-android
+apk=$(ls -t android/app/build/outputs/apk/dev/debug/*.apk | head -1)
+"$adb" ${1:+-s "$1"} install -r "$apk"
+"$adb" ${1:+-s "$1"} shell monkey -p com.dev.xstreaming -c android.intent.category.LAUNCHER 1 >/dev/null
+echo "Installed and started com.dev.xstreaming from $apk"
