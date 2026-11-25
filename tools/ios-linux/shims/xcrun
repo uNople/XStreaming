@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Minimal xcrun stand-in for the Linux iOS build. It answers the queries that
+# CocoaPods prepare commands make (compiler lookup, SDK path) from the
+# IOS_LINUX_* environment that tools/ios-linux/build.py exports.
+set -euo pipefail
+here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+: "${IOS_LINUX_SDK:?IOS_LINUX_SDK is not set; run through tools/ios-linux/build.py}"
+mode=run
+tool=""
+args=()
+while (($#)); do
+    case "$1" in
+        -sdk|--sdk|-toolchain|--toolchain) shift ;;
+        -find|--find|-f) mode=find ;;
+        --show-sdk-path|-show-sdk-path) mode=sdk-path ;;
+        --show-sdk-version|-show-sdk-version) mode=sdk-version ;;
+        --show-sdk-platform-path|-show-sdk-platform-path) mode=platform-path ;;
+        -*) if [[ -n "$tool" ]]; then args+=("$1"); fi ;;
+        *) if [[ -z "$tool" ]]; then tool="$1"; else args+=("$1"); fi ;;
+    esac
+    shift
+done
+case "$mode" in
+    sdk-path) printf '%s\n' "$IOS_LINUX_SDK" ;;
+    sdk-version) printf '%s\n' "${IOS_LINUX_SDK_VERSION:?}" ;;
+    platform-path) printf '%s\n' "$(dirname -- "$(dirname -- "$(dirname -- "$IOS_LINUX_SDK")")")" ;;
+    find)
+        case "$tool" in
+            cc|clang|gcc) printf '%s\n' "$here/ios-cc" ;;
+            c++|clang++|g++) printf '%s\n' "$here/ios-c++" ;;
+            *) command -v "$tool" ;;
+        esac ;;
+    run)
+        [[ -n "$tool" ]] || { echo "xcrun shim: no tool given" >&2; exit 64; }
+        case "$tool" in
+            cc|clang|gcc) exec "$here/ios-cc" "${args[@]}" ;;
+            c++|clang++|g++) exec "$here/ios-c++" "${args[@]}" ;;
+            *) exec "$tool" "${args[@]}" ;;
+        esac ;;
+esac

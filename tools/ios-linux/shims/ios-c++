@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Cross compiler driver used by configure-style prepare commands: Apple-flavoured
+# clang targeting arm64 iOS, linking through LLD's Mach-O port. `-arch <name>`
+# is dropped because the target triple already fixes the architecture and the
+# pair confuses the driver's linker invocation on Linux.
+set -euo pipefail
+: "${IOS_LINUX_CLANG:?IOS_LINUX_CLANG is not set; run through tools/ios-linux/build.py}"
+args=()
+while (($#)); do
+    if [[ "$1" == "-arch" ]]; then shift 2; continue; fi
+    args+=("$1"); shift
+done
+exec "${IOS_LINUX_CLANG}++" -target "arm64-apple-ios${IOS_LINUX_DEPLOYMENT_TARGET:-16.6}" -fuse-ld=lld "--ld-path=${IOS_LINUX_LLD:?}" "${args[@]}"

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Build the unsigned iOS app (.app + .ipa) on Linux. See tools/ios-linux/build.py.
+set -euo pipefail
+exec python3 "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/tools/ios-linux/build.py" build "$@"

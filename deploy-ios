@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Build, then sign + install on the USB-connected iPad (ipad-dev) and launch.
+# See tools/ios-linux/build.py.
+set -euo pipefail
+exec python3 "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/tools/ios-linux/build.py" deploy "$@"

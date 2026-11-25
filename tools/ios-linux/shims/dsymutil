@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# The Darwin clang driver runs dsymutil after a one-step compile+link with -g
+# (autoconf link checks do exactly that). The Swift toolchain ships none, so
+# forward to LLVM's.
+set -euo pipefail
+exec "${IOS_LINUX_DSYMUTIL:?IOS_LINUX_DSYMUTIL is not set; run through tools/ios-linux/build.py}" "$@"

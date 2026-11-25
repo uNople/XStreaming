@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# xcodebuild stand-in: React Native's pod scripts only ask for the version.
+# The Xcode version reported is the one the iOS SDK in use was extracted from.
+set -euo pipefail
+if [[ "${1:-}" == "-version" ]]; then
+    printf 'Xcode %s\nBuild version %s\n' "${IOS_LINUX_XCODE_VERSION:-27.0}" "${IOS_LINUX_XCODE_BUILD:-linux}"
+    exit 0
+fi
+echo "xcodebuild shim: only -version is supported on Linux (got: $*)" >&2
+exit 64
