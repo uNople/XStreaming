@@ -7,7 +7,8 @@
     NSMutableArray *_connectedControllers;
     NSString *_currentScreen; //  添加成员变量记录当前屏幕
     BOOL _motionReporting;    // whether controller motion is sent to JS (for motion aiming)
-    CFAbsoluteTime _motionLogged;
+    NSTimeInterval _motionLogged;
+    dispatch_source_t _motionClock;
     NSLock *_controllerStreamLock;
     
     Controller *_oscController;
@@ -45,7 +46,7 @@ RCT_EXPORT_METHOD(setCurrentScreen:(NSString *)screenName)
 }
 
 - (NSArray<NSString *> *)supportedEvents {
-    return @[@"onController", @"onMotion"];
+    return @[@"onController", @"onMotion", @"onMotionTick"];
 }
 
 // 添加这个方法来确保在主线程上初始化
@@ -524,17 +525,15 @@ RCT_EXPORT_METHOD(setCurrentScreen:(NSString *)screenName)
     }
 }
 
-// Sends the controller's rotation rate and acceleration to JS as "onMotion", for
-// motion aiming. Values are passed on exactly as the GameController framework gives
-// them (rotation in radians a second, acceleration and gravity in g); the JS side
-// knows the axes. A DualSense reports motion only once its sensors are switched on.
+// Sample motion, L2 and the right stick together, as in a desktop HID report.
+// Rotation is in radians per second, and acceleration is in g.
 -(void) applyMotionReporting:(GCController*) controller
 {
     GCMotion *motion = controller.motion;
     if (motion == nil) {
         return;
     }
-    if (!_motionReporting || !motion.hasRotationRate) {
+    if (!_motionReporting || !motion.hasRotationRate || controller.extendedGamepad == nil) {
         motion.valueChangedHandler = nil;
         if (motion.sensorsRequireManualActivation) {
             motion.sensorsActive = NO;
@@ -552,27 +551,58 @@ RCT_EXPORT_METHOD(setCurrentScreen:(NSString *)screenName)
         }
         GCRotationRate rate = m.rotationRate;
         GCAcceleration accel = m.acceleration;
-        GCAcceleration gravity = m.gravity;
+        GCExtendedGamepad *gamepad = m.controller.extendedGamepad;
+        NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
         [strongSelf sendEventWithName:@"onMotion" body:@{
+            @"time": @(now),
             @"rx": @(rate.x), @"ry": @(rate.y), @"rz": @(rate.z),
             @"ax": @(accel.x), @"ay": @(accel.y), @"az": @(accel.z),
-            @"gx": @(gravity.x), @"gy": @(gravity.y), @"gz": @(gravity.z),
+            @"leftTrigger": @(gamepad.leftTrigger.value),
+            @"rightStickX": @(gamepad.rightThumbstick.xAxis.value),
+            @"rightStickY": @(gamepad.rightThumbstick.yAxis.value),
         }];
         // Twice a second in the device log, to check the axes against a real controller.
-        CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
         if (now - strongSelf->_motionLogged > 0.5) {
             strongSelf->_motionLogged = now;
-            NSLog(@"XSMotion rate %.3f %.3f %.3f accel %.3f %.3f %.3f gravity %.3f %.3f %.3f",
-                  rate.x, rate.y, rate.z, accel.x, accel.y, accel.z, gravity.x, gravity.y, gravity.z);
+            NSLog(@"XSMotion rate %.3f %.3f %.3f accel %.3f %.3f %.3f",
+                  rate.x, rate.y, rate.z, accel.x, accel.y, accel.z);
         }
     };
 }
 
+- (void)startMotionClock {
+    // React Native's short intervals run once per display frame. Use the same
+    // 4 ms output cadence as the desktop bridge, even between sensor readings.
+    uint64_t interval = 4 * NSEC_PER_MSEC;
+    _motionClock = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(_motionClock, dispatch_time(DISPATCH_TIME_NOW, interval), interval, NSEC_PER_MSEC);
+    __weak typeof(self) weakSelf = self;
+    dispatch_source_set_event_handler(_motionClock, ^{
+        [weakSelf sendEventWithName:@"onMotionTick" body:@(NSProcessInfo.processInfo.systemUptime)];
+    });
+    dispatch_resume(_motionClock);
+}
+
+- (void)stopMotionClock {
+    if (_motionClock != nil) {
+        dispatch_source_cancel(_motionClock);
+        _motionClock = nil;
+    }
+}
+
 RCT_EXPORT_METHOD(setMotionReporting:(BOOL)enabled) {
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_motionReporting == enabled) {
+            return;
+        }
         self->_motionReporting = enabled;
         for (GCController *controller in [GCController controllers]) {
             [self applyMotionReporting:controller];
+        }
+        if (enabled) {
+            [self startMotionClock];
+        } else {
+            [self stopMotionClock];
         }
     });
 }
@@ -671,6 +701,7 @@ RCT_EXPORT_METHOD(setAdaptiveTriggers:(int)leftMode leftParams:(NSArray<NSNumber
 }
 
 - (void)dealloc {
+    [self stopMotionClock];
     [self stopObservingGamepads];
 }
 
