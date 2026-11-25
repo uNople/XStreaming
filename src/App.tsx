@@ -44,6 +44,7 @@ import FeedbackScreen from './pages/Feedback';
 import VirtualGamepadSettingsScreen from './pages/VirtualGamepadSettings';
 import CustomGamepadScreen from './pages/CustomGamepad';
 import Ds5SettingsScreen from './pages/Ds5Settings';
+import Gta6TriggersScreen from './pages/Gta6Triggers';
 
 import {useTranslation} from 'react-i18next';
 
@@ -222,6 +223,11 @@ function App() {
                   name="Ds5"
                   component={Ds5SettingsScreen}
                   options={{title: t('DualSense')}}
+                />
+                <RootStack.Screen
+                  name="Gta6Triggers"
+                  component={Gta6TriggersScreen}
+                  options={{title: t('GTA 6 adaptive triggers')}}
                 />
               </RootStack.Group>
 

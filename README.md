@@ -71,3 +71,16 @@ npm run android
 ### License
 
 XStreaming is [MIT licensed](./LICENSE).
+
+## Building on Linux
+
+```
+./build-ios     # unsigned XStreaming-Dev .app and .ipa in artifacts/ios-linux/out
+./deploy-ios    # build, then sign, install and start it on the USB-connected iPad
+```
+
+`tools/ios-linux/build.py` runs the real `pod install`, compiles with clang and links with LLD against an Apple iOS SDK. It needs a toolchain directory (LLVM tools and the SDK) named in `IOS_LINUX_TOOLCHAIN` or in `tools/ios-linux/toolchain.local`. The app icon and launch screen are plain images, since asset catalogs and storyboards need Apple's tools.
+
+## GTA 6 adaptive triggers (DualSense)
+
+Settings → GTA 6 adaptive triggers. GTA 6 on Xbox sends body rumble only, so `src/triggers/gta6Profile.ts` derives the triggers from it: a trigger break and a recoil kick per shot on foot, pedal resistance and impact jolts in a vehicle. The native `GamepadManager.setAdaptiveTriggers` applies them through the GameController framework, over Bluetooth or USB.

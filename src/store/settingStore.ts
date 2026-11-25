@@ -1,8 +1,11 @@
+import {DeviceEventEmitter} from 'react-native';
 import {storage} from './mmkv';
+import {Gta6Tuning, normaliseTuning} from '../triggers/gta6Profile';
 import {debugFactory} from '../utils/debug';
 const log = debugFactory('settingStore');
 
 const STORE_KEY = 'user.settings';
+export const SETTINGS_CHANGED_EVENT = 'SETTINGS_CHANGED';
 
 type DisplayOptions = {
   sharpness: number;
@@ -47,6 +50,8 @@ export type Settings = {
   left_trigger_effects: [];
   right_trigger_type: number;
   right_trigger_effects: [];
+  gta6_triggers: boolean;
+  gta6_trigger_tuning: Gta6Tuning;
   display_options: DisplayOptions;
   ipv6: boolean;
   check_update: boolean;
@@ -91,6 +96,8 @@ const defaultSettings: Settings = {
   left_trigger_effects: [],
   right_trigger_type: 0,
   right_trigger_effects: [],
+  gta6_triggers: true,
+  gta6_trigger_tuning: normaliseTuning(),
   ipv6: false,
   check_update: true,
   power_on: false,
@@ -109,6 +116,7 @@ export const saveSettings = (settings: Settings) => {
   const totalSettings = Object.assign({}, defaultSettings, settings);
   // AsyncStorage.setItem(STORE_KEY, JSON.stringify(totalSettings));
   storage.set(STORE_KEY, JSON.stringify(totalSettings));
+  DeviceEventEmitter.emit(SETTINGS_CHANGED_EVENT, totalSettings);
 };
 
 export const getSettings = (): Settings => {

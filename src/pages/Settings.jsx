@@ -158,6 +158,14 @@ function SettingsScreen({navigation}) {
               navigation.navigate('VirtualGamepadSettings');
             }}
           />
+
+          <SettingItem
+            title={t('GTA 6 adaptive triggers')}
+            description={t('gta6_triggers_desc')}
+            onPress={() => {
+              navigation.navigate('Gta6Triggers');
+            }}
+          />
         </View>
 
         <View>

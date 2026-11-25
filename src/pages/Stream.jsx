@@ -27,6 +27,11 @@ import RNRestart from 'react-native-restart';
 import XcloudApi from '../xCloud';
 import {useSelector} from 'react-redux';
 import {getSettings, saveSettings} from '../store/settingStore';
+import {
+  gta6Rumble,
+  startGta6Triggers,
+  stopGta6Triggers,
+} from '../triggers/gta6Ios';
 import {useTranslation} from 'react-i18next';
 import {debugFactory} from '../utils/debug';
 import WebApi from '../web';
@@ -188,6 +193,8 @@ function StreamScreen({navigation, route}) {
       }
     };
 
+    startGta6Triggers(_settings);
+
     // Controller
     if (_settings.gamepad_kernal === 'Native') {
       log.info('Entry native mode');
@@ -272,6 +279,7 @@ function StreamScreen({navigation, route}) {
       timer.current && clearInterval(timer.current);
       controllerEventListener.current &&
         controllerEventListener.current.remove();
+      stopGta6Triggers();
     };
   }, [
     route.params?.sessionId,
@@ -474,6 +482,8 @@ function StreamScreen({navigation, route}) {
     }
     if (type === 'deviceVibration') {
       const {rumbleData} = message;
+      // The web player divides the packet's duration by ten.
+      gta6Rumble(rumbleData, rumbleData.duration * 10);
       if (rumbleData.strongMagnitude === 0 || rumbleData.weakMagnitude === 0) {
         Vibration.cancel();
       } else {
@@ -482,6 +492,7 @@ function StreamScreen({navigation, route}) {
     }
     if (type === 'nativeVibration') {
       const {rumbleData} = message;
+      gta6Rumble(rumbleData, rumbleData.duration * 10);
       let weakMagnitude = rumbleData.weakMagnitude * 65535;
       let strongMagnitude = rumbleData.strongMagnitude * 65535;
       let leftTrigger = rumbleData.leftTrigger * 65535;

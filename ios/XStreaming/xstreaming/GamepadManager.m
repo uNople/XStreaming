@@ -551,6 +551,67 @@ RCT_EXPORT_METHOD(rumble:(int)duration lowFreqMotor:(int)lowFreqMotor highFreqMo
     }
 }
 
+// Applies one DualSense trigger effect given as its mode byte and parameter bytes
+// (the same form the Android USB driver and the desktop bridge use).
+static void ApplyTriggerEffect(GCDualSenseAdaptiveTrigger *trigger, int mode, NSArray<NSNumber *> *params) {
+    NSInteger count = params.count;
+    int p[6] = {0, 0, 0, 0, 0, 0};
+    for (NSInteger i = 0; i < 6 && i < count; i++) {
+        p[i] = params[i].intValue & 0xFF;
+    }
+    switch (mode) {
+        case 0x06: // vibration: frequency, amplitude
+            [trigger setModeVibrationWithStartPosition:0.0f amplitude:p[1] / 255.0f frequency:p[0] / 255.0f];
+            break;
+        case 0x21: { // feedback: active-zone mask (10 bits), then 3 bits of strength per zone
+            int active = p[0] | (p[1] << 8);
+            uint32_t strength = (uint32_t)p[2] | ((uint32_t)p[3] << 8) | ((uint32_t)p[4] << 16) | ((uint32_t)p[5] << 24);
+            GCDualSenseAdaptiveTriggerPositionalResistiveStrengths strengths;
+            for (int zone = 0; zone < GCDualSenseAdaptiveTriggerDiscretePositionCount; zone++) {
+                BOOL on = zone < 10 && (active & (1 << zone));
+                strengths.values[zone] = on ? (((strength >> (3 * zone)) & 7) + 1) / 8.0f : 0.0f;
+            }
+            [trigger setModeFeedbackWithResistiveStrengths:strengths];
+            break;
+        }
+        case 0x25: { // weapon: mask with the start and end zones, then strength - 1
+            int zones = p[0] | (p[1] << 8);
+            int start = -1, end = -1;
+            for (int zone = 0; zone < 10; zone++) {
+                if (zones & (1 << zone)) {
+                    if (start < 0) { start = zone; }
+                    end = zone;
+                }
+            }
+            if (start < 0 || end <= start) {
+                [trigger setModeOff];
+                break;
+            }
+            // Zone centres on the framework's normalised 0..1 travel.
+            [trigger setModeWeaponWithStartPosition:(start + 0.5f) / 10.0f
+                                        endPosition:(end + 0.5f) / 10.0f
+                                  resistiveStrength:((p[2] & 7) + 1) / 8.0f];
+            break;
+        }
+        default:
+            [trigger setModeOff];
+            break;
+    }
+}
+
+RCT_EXPORT_METHOD(setAdaptiveTriggers:(int)leftMode leftParams:(NSArray<NSNumber *> *)leftParams rightMode:(int)rightMode rightParams:(NSArray<NSNumber *> *)rightParams) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (GCController *controller in [GCController controllers]) {
+            GCExtendedGamepad *gamepad = controller.extendedGamepad;
+            if ([gamepad isKindOfClass:[GCDualSenseGamepad class]]) {
+                GCDualSenseGamepad *dualSense = (GCDualSenseGamepad *)gamepad;
+                ApplyTriggerEffect(dualSense.leftTrigger, leftMode, leftParams ?: @[]);
+                ApplyTriggerEffect(dualSense.rightTrigger, rightMode, rightParams ?: @[]);
+            }
+        }
+    });
+}
+
 - (void)dealloc {
     [self stopObservingGamepads];
 }
