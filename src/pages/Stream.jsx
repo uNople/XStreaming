@@ -40,12 +40,13 @@ import CustomVirtualGamepad from '../components/CustomVirtualGamepad';
 import PerfPanel from '../components/PerfPanel';
 import Display from '../components/Display';
 import {GAMEPAD_MAPING} from '../common';
+import {createGamepadOutput, gamepadButtons} from '../utils/gamepadOutput';
 
 const log = debugFactory('StreamScreen');
 
 const CONNECTED = 'connected';
 
-const gpState = {
+const initialGamepadState = {
   A: 0,
   B: 0,
   X: 0,
@@ -85,56 +86,6 @@ const getPressedButtons = combinedValue => {
   return pressedButtons;
 };
 
-const setGpState = combinedKeys => {
-  const keys = [
-    'A',
-    'B',
-    'X',
-    'Y',
-    'LeftShoulder',
-    'RightShoulder',
-    'View',
-    'Menu',
-    'LeftThumb',
-    'RightThumb',
-    'DPadUp',
-    'DPadDown',
-    'DPadLeft',
-    'DPadRight',
-    'Nexus',
-  ];
-  keys.forEach(k => {
-    if (combinedKeys.includes(k)) {
-      gpState[k] = 1;
-    } else {
-      gpState[k] = 0;
-    }
-  });
-};
-
-const resetButtonState = () => {
-  const keys = [
-    'A',
-    'B',
-    'X',
-    'Y',
-    'LeftShoulder',
-    'RightShoulder',
-    'View',
-    'Menu',
-    'LeftThumb',
-    'RightThumb',
-    'DPadUp',
-    'DPadDown',
-    'DPadLeft',
-    'DPadRight',
-    'Nexus',
-  ];
-  keys.forEach(k => {
-    gpState[k] = 0;
-  });
-};
-
 function StreamScreen({navigation, route}) {
   const {t} = useTranslation();
   const authentication = useSelector(state => state.authentication);
@@ -147,6 +98,7 @@ function StreamScreen({navigation, route}) {
   const [isExiting, setIsExiting] = React.useState(false);
   const [showModal, setShowModal] = React.useState(false);
   const [showTipsModal, setShowTipsModal] = React.useState(false);
+  const [hasController, setHasController] = React.useState(null);
   const [showWebview, setShowWebview] = React.useState(false);
   const [showDisplayModal, setShowDisplayModal] = React.useState(false);
   const [showMessageModal, setShowMessageModal] = React.useState(false);
@@ -159,9 +111,21 @@ function StreamScreen({navigation, route}) {
   const [message, setMessage] = React.useState('');
   const [messageSending, setMessageSending] = React.useState(false);
 
-  const controllerEventListener = React.useRef(undefined);
-  const timer = React.useRef(undefined);
-  const isRightstickMoving = React.useRef(false);
+  const gpState = React.useRef({...initialGamepadState}).current;
+  const webviewRef = React.useRef(null);
+  const gamepadReady = React.useRef(false);
+  const publishGamepad = React.useRef(null);
+  const syncGamepad = React.useRef(null);
+  const warnedAboutController = React.useRef(false);
+
+  React.useEffect(() => {
+    if (connectState !== CONNECTED || hasController || showVirtualGamepad) {
+      setShowTipsModal(false);
+    } else if (hasController === false && !warnedAboutController.current) {
+      warnedAboutController.current = true;
+      setShowTipsModal(true);
+    }
+  }, [connectState, hasController, showVirtualGamepad]);
 
   React.useEffect(() => {
     const _settings = getSettings();
@@ -193,12 +157,18 @@ function StreamScreen({navigation, route}) {
       }
     };
 
-    const sendGamepad = aim => {
-      if (!aim || (!aim[0] && !aim[1])) {
-        postData2Webview('gamepad', gpState);
-        return;
+    const output = createGamepadOutput(state => {
+      if (!gamepadReady.current || !webviewRef.current) {
+        return false;
       }
-      postData2Webview('gamepad', {
+      postData2Webview('gamepad', state);
+      return true;
+    });
+    const nativeGamepad = _settings.gamepad_kernal === 'Native';
+    let aim = [0, 0];
+    let controllerPresent = null;
+    publishGamepad.current = () => {
+      output.update({
         ...gpState,
         RightThumbXAxis: Math.max(
           -1,
@@ -210,50 +180,79 @@ function StreamScreen({navigation, route}) {
         ),
       });
     };
+    syncGamepad.current = output.sync;
+    publishGamepad.current();
+
+    let listening = true;
+    const updatePresence = present => {
+      if (!listening || present === controllerPresent) {
+        return;
+      }
+      controllerPresent = present;
+      setHasController(present);
+      if (!present && nativeGamepad) {
+        Object.assign(gpState, initialGamepadState);
+        aim = [0, 0];
+        publishGamepad.current();
+      }
+    };
+    const presenceListener = eventEmitter.addListener(
+      'onControllerPresence',
+      updatePresence,
+    );
+    GamepadManager.getControllerPresence?.().then(present => {
+      if (controllerPresent === null) {
+        updatePresence(present);
+      }
+    });
 
     // Controller
-    const nativeGamepad = _settings.gamepad_kernal === 'Native';
+    let controllerListener;
     if (nativeGamepad) {
       log.info('Entry native mode');
-      controllerEventListener.current = eventEmitter.addListener(
-        'onController',
-        params => {
-          const {
-            buttonFlags,
-            leftTrigger,
-            rightTrigger,
-            leftStickX,
-            leftStickY,
-            rightStickX,
-            rightStickY,
-          } = params;
+      controllerListener = eventEmitter.addListener('onController', params => {
+        const {
+          buttonFlags,
+          leftTrigger,
+          rightTrigger,
+          leftStickX,
+          leftStickY,
+          rightStickX,
+          rightStickY,
+        } = params;
 
-          if (buttonFlags !== 0) {
-            const keys = getPressedButtons(buttonFlags);
-            setGpState(keys);
-          } else {
-            resetButtonState();
-          }
+        updatePresence(true);
+        const keys = buttonFlags ? getPressedButtons(buttonFlags) : [];
+        for (const button of gamepadButtons) {
+          gpState[button] = keys.includes(button) ? 1 : 0;
+        }
 
-          // Trigger
-          gpState.LeftTrigger = leftTrigger;
-          gpState.RightTrigger = rightTrigger;
+        // Trigger
+        gpState.LeftTrigger = leftTrigger;
+        gpState.RightTrigger = rightTrigger;
 
-          // Joystick
-          gpState.LeftThumbXAxis = normaliseAxis(leftStickX);
-          gpState.LeftThumbYAxis = normaliseAxis(-leftStickY);
-          gpState.RightThumbXAxis = normaliseAxis(rightStickX);
-          gpState.RightThumbYAxis = normaliseAxis(-rightStickY);
-        },
-      );
+        // Joystick
+        gpState.LeftThumbXAxis = normaliseAxis(leftStickX);
+        gpState.LeftThumbYAxis = normaliseAxis(-leftStickY);
+        gpState.RightThumbXAxis = normaliseAxis(rightStickX);
+        gpState.RightThumbYAxis = normaliseAxis(-rightStickY);
+        publishGamepad.current();
+      });
     }
-    const motionClock = startGta6Triggers(
+    startGta6Triggers(
       _settings,
-      nativeGamepad ? sendGamepad : undefined,
+      nativeGamepad
+        ? push => {
+            if (
+              controllerPresent !== false &&
+              (aim[0] !== push[0] || aim[1] !== push[1])
+            ) {
+              aim = push;
+              publishGamepad.current();
+            }
+          }
+        : undefined,
     );
-    if (nativeGamepad && !motionClock) {
-      timer.current = setInterval(sendGamepad, 4);
-    }
 
     if (route.params?.sessionId) {
       log.info('Stream screen receive sessionId:', route.params?.sessionId);
@@ -295,15 +294,19 @@ function StreamScreen({navigation, route}) {
 
     return () => {
       Orientation.unlockAllOrientations();
-      timer.current && clearInterval(timer.current);
-      controllerEventListener.current &&
-        controllerEventListener.current.remove();
+      listening = false;
+      presenceListener.remove();
+      controllerListener?.remove();
+      output.dispose();
+      publishGamepad.current = null;
+      syncGamepad.current = null;
       stopGta6Triggers();
     };
   }, [
     route.params?.sessionId,
     route.params?.streamType,
     streamingTokens,
+    gpState,
     navigation,
     authentication,
   ]);
@@ -316,8 +319,6 @@ function StreamScreen({navigation, route}) {
     ios: 'index.html', // iOS 会自动从 bundle 中查找
     // ios: 'http://172.25.176.27:5173/',
   });
-
-  const webviewRef = React.useRef(null);
 
   const handlePowerOff = async () => {
     const webApi = new WebApi(webToken);
@@ -385,12 +386,12 @@ function StreamScreen({navigation, route}) {
   const handleWebviewMessage = event => {
     const data = JSON.parse(event.nativeEvent.data);
     const {type, message} = data;
-    console.log('handleWebviewMessage type:', type);
-    console.log('handleWebviewMessage message:', message);
     if (type === 'other') {
       Alert.alert(message);
     }
     if (type === 'xcloudReady') {
+      gamepadReady.current = true;
+      syncGamepad.current?.();
       const _settings = getSettings();
       log.info('Get localSettings:', _settings);
 
@@ -582,7 +583,7 @@ function StreamScreen({navigation, route}) {
       setConnectState(message);
       if (message === CONNECTED) {
         ToastAndroid.show(t('Connected'), ToastAndroid.SHORT);
-        setShowTipsModal(true);
+        syncGamepad.current?.();
       }
       // Alway show virtual gamepad
       if (message === CONNECTED && settings.show_virtual_gamead) {
@@ -621,6 +622,7 @@ function StreamScreen({navigation, route}) {
   const handleButtonPressIn = name => {
     // console.log('handleButtonPressIn:', name);
     gpState[name] = 1;
+    publishGamepad.current?.();
     // if (settings.vibration) {
     //   Vibration.vibrate(3);
     // }
@@ -630,6 +632,7 @@ function StreamScreen({navigation, route}) {
     setTimeout(() => {
       // console.log('handleButtonPressOut:', name);
       gpState[name] = 0;
+      publishGamepad.current?.();
     }, 50);
   };
 
@@ -647,34 +650,23 @@ function StreamScreen({navigation, route}) {
     }
 
     if (id === 'right') {
-      if (Math.abs(leveledX) > 0 || Math.abs(leveledY) > 0) {
-        isRightstickMoving.current = true;
-      } else {
-        isRightstickMoving.current = false;
-      }
       gpState.RightThumbXAxis = Number(leveledX);
       gpState.RightThumbYAxis = Number(-leveledY);
     } else {
       gpState.LeftThumbXAxis = Number(leveledX);
       gpState.LeftThumbYAxis = Number(-leveledY);
     }
+    publishGamepad.current?.();
   };
 
-  const requestVirtualGamepad = () => {
-    // Close
-    if (showVirtualGamepad) {
-      setShowVirtualGamepad(false);
-      if (settings.gamepad_kernal !== 'Native') {
-        timer.current && clearInterval(timer.current);
-      }
-    } else {
-      setShowVirtualGamepad(true);
-      if (settings.gamepad_kernal !== 'Native') {
-        timer.current = setInterval(() => {
-          postData2Webview('gamepad', gpState);
-        }, 4);
-      }
-    }
+  const pressNexus = duration => {
+    gpState.Nexus = 1;
+    publishGamepad.current?.();
+    setTimeout(() => {
+      gpState.Nexus = 0;
+      publishGamepad.current?.();
+    }, duration);
+    handleCloseModal();
   };
 
   const requestExit = () => {
@@ -832,7 +824,7 @@ function StreamScreen({navigation, route}) {
                         title={t('Toggle Virtual Gamepad')}
                         background={background}
                         onPress={() => {
-                          requestVirtualGamepad();
+                          setShowVirtualGamepad(!showVirtualGamepad);
                           handleCloseModal();
                         }}
                       />
@@ -842,13 +834,7 @@ function StreamScreen({navigation, route}) {
                     <List.Item
                       title={t('Press Nexus')}
                       background={background}
-                      onPress={() => {
-                        gpState.Nexus = 1;
-                        setTimeout(() => {
-                          gpState.Nexus = 0;
-                        }, 120);
-                        handleCloseModal();
-                      }}
+                      onPress={() => pressNexus(120)}
                     />
                   )}
                   {connectState === CONNECTED &&
@@ -856,13 +842,7 @@ function StreamScreen({navigation, route}) {
                       <List.Item
                         title={t('Long press Nexus')}
                         background={background}
-                        onPress={() => {
-                          gpState.Nexus = 1;
-                          setTimeout(() => {
-                            gpState.Nexus = 0;
-                          }, 1000);
-                          handleCloseModal();
-                        }}
+                        onPress={() => pressNexus(1000)}
                       />
                     )}
 
@@ -936,6 +916,9 @@ function StreamScreen({navigation, route}) {
             injectedJavaScriptObject={{
               settings,
               streamType: route.params?.streamType,
+            }}
+            onLoadStart={() => {
+              gamepadReady.current = false;
             }}
             onMessage={event => {
               handleWebviewMessage(event);

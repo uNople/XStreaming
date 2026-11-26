@@ -46,7 +46,7 @@ RCT_EXPORT_METHOD(setCurrentScreen:(NSString *)screenName)
 }
 
 - (NSArray<NSString *> *)supportedEvents {
-    return @[@"onController", @"onMotion", @"onMotionTick"];
+    return @[@"onController", @"onControllerPresence", @"onMotion", @"onMotionTick"];
 }
 
 // 添加这个方法来确保在主线程上初始化
@@ -138,6 +138,21 @@ RCT_EXPORT_METHOD(setCurrentScreen:(NSString *)screenName)
     }
     
     return NO;
+}
+
+- (NSNumber *)controllerPresence {
+    for (GCController *controller in [GCController controllers]) {
+        if ([GamepadManager isSupportedGamepad:controller] && !controller.isSnapshot) {
+            return @YES;
+        }
+    }
+    return @NO;
+}
+
+RCT_EXPORT_METHOD(getControllerPresence:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        resolve([self controllerPresence]);
+    });
 }
 
 -(Controller*) assignController:(GCController*)controller {
@@ -740,6 +755,7 @@ RCT_EXPORT_METHOD(setAdaptiveTriggers:(int)leftMode leftParams:(NSArray<NSNumber
         // Report the controller arrival to the host if we're connected
         [self reportControllerArrival:limeController];
     }
+    [self sendEventWithName:@"onControllerPresence" body:[self controllerPresence]];
 }
 
 // 控制器断开连接
@@ -752,6 +768,7 @@ RCT_EXPORT_METHOD(setAdaptiveTriggers:(int)leftMode leftParams:(NSArray<NSNumber
     }
     
     [self unregisterControllerCallbacks:controller];
+    [self sendEventWithName:@"onControllerPresence" body:[self controllerPresence]];
     
     NSNumber *playerIndexKey = [NSNumber numberWithInteger:controller.playerIndex];
     Controller *limeController = [_controllers objectForKey:playerIndexKey];
