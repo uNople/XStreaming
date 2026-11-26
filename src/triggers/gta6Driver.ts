@@ -8,20 +8,10 @@ import {
   TriggerEffect,
 } from './gta6Profile';
 
-/**
- * Sends one controller update: both trigger effects plus the body rumble
- * (0 to 255 each), because a DualSense output report carries them together.
- */
-export type TriggerSender = (
-  left: TriggerEffect,
-  right: TriggerEffect,
-  heavy: number,
-  soft: number,
-) => void;
+export type TriggerSender = (left: TriggerEffect, right: TriggerEffect) => void;
 
 const TICK_MS = 8; // how often trigger positions and timers are looked at
 const REFRESH_SECONDS = 1; // effects are repeated, so they come back after a reconnect
-const RUMBLE_MAX_SECONDS = 3; // a lost "stop" packet must not leave the motors running
 
 const seconds = () =>
   (global.performance?.now ? global.performance.now() : Date.now()) / 1000;
@@ -38,9 +28,7 @@ export class Gta6TriggerDriver {
   private sentAt = -1e9;
   private l2 = 0;
   private r2 = 0;
-  private heavy = 0;
-  private soft = 0;
-  private rumbleUntil = 0;
+  private enabled = true;
 
   constructor(send: TriggerSender) {
     this.send = send;
@@ -57,8 +45,7 @@ export class Gta6TriggerDriver {
       SETTINGS_CHANGED_EVENT,
       settings => this.configure(settings),
     );
-    this.timer = setInterval(() => this.update(false), TICK_MS);
-    this.update(true);
+    this.timer = setInterval(() => this.update(), TICK_MS);
   }
 
   stop() {
@@ -68,7 +55,7 @@ export class Gta6TriggerDriver {
     }
     this.subscription?.remove();
     this.subscription = null;
-    this.send(TRIGGER_OFF, TRIGGER_OFF, 0, 0);
+    this.send(TRIGGER_OFF, TRIGGER_OFF);
   }
 
   /** Live trigger positions, 0 to 1. */
@@ -77,43 +64,33 @@ export class Gta6TriggerDriver {
     this.r2 = motor(rightTrigger);
   }
 
-  /** A rumble packet from the console: motor levels 0 to 1, duration in milliseconds. */
-  onRumble(weakMagnitude: number, strongMagnitude: number, durationMs: number) {
-    const now = seconds();
-    this.profile.onPacket(weakMagnitude, strongMagnitude, now);
-    this.heavy = motor(strongMagnitude);
-    this.soft = motor(weakMagnitude);
-    this.rumbleUntil =
-      now +
-      Math.max(
-        0.05,
-        Math.min(RUMBLE_MAX_SECONDS, (Number(durationMs) || 0) / 1000),
-      );
-    this.update(true);
+  /** Use the console's rumble to update the trigger profile. */
+  onRumble(weakMagnitude: number, strongMagnitude: number) {
+    this.profile.onPacket(weakMagnitude, strongMagnitude, seconds());
+    this.update();
   }
 
   private configure(settings: any) {
+    this.enabled = !!settings?.gta6_triggers;
     this.profile.configure(normaliseTuning(settings?.gta6_trigger_tuning));
-    this.sent = null;
+    this.update();
   }
 
-  private update(force: boolean) {
+  private update() {
     const now = seconds();
-    if ((this.heavy || this.soft) && now > this.rumbleUntil) {
-      this.heavy = 0;
-      this.soft = 0;
-      force = true;
-    }
-    const current = this.profile.effects(now, this.l2, this.r2);
+    const effects = this.profile.effects(now, this.l2, this.r2);
+    const current: [TriggerEffect, TriggerEffect] = this.enabled
+      ? effects
+      : [TRIGGER_OFF, TRIGGER_OFF];
     const unchanged =
       this.sent &&
       sameEffect(this.sent[0], current[0]) &&
       sameEffect(this.sent[1], current[1]);
-    if (!force && unchanged && now - this.sentAt < REFRESH_SECONDS) {
+    if (unchanged && now - this.sentAt < REFRESH_SECONDS) {
       return;
     }
     this.sent = current;
     this.sentAt = now;
-    this.send(current[0], current[1], this.heavy, this.soft);
+    this.send(current[0], current[1]);
   }
 }

@@ -21,6 +21,7 @@
  */
 
 export type MotionTuning = {
+  motion_enabled: number;
   motion: number;
   motion_slow: number;
   motion_vertical: number;
@@ -56,6 +57,7 @@ export const MOTION_TUNING: {
   unit?: string;
   choices?: string[];
 }[] = [
+  {key: 'motion_enabled', label: 'Motion aiming', min: 0, max: 1, def: 1},
   {
     key: 'motion',
     label: 'Sensitivity for fast movements (100% matches Zelda, 0 is off)',
@@ -308,7 +310,7 @@ export class MotionAim {
   }
 
   configure(values: MotionTuning) {
-    this.gain = (PAN_GAIN * values.motion) / 100;
+    this.gain = values.motion_enabled ? (PAN_GAIN * values.motion) / 100 : 0;
     this.gainSlow = (PAN_GAIN * values.motion_slow) / 100;
     this.stickPause = !!values.motion_stick_pause;
     this.flickRule = !!values.motion_flick_return;

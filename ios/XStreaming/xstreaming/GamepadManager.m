@@ -654,6 +654,13 @@ RCT_EXPORT_METHOD(rumble:(int)duration lowFreqMotor:(int)lowFreqMotor highFreqMo
     }
 }
 
+RCT_EXPORT_METHOD(stopBodyRumble) {
+    for (Controller *controller in [_controllers allValues]) {
+        [controller.lowFreqMotor setMotorAmplitude:0];
+        [controller.highFreqMotor setMotorAmplitude:0];
+    }
+}
+
 // Applies one DualSense trigger effect given as its mode byte and parameter bytes
 // (the same form the Android USB driver and the desktop bridge use).
 static void ApplyTriggerEffect(GCDualSenseAdaptiveTrigger *trigger, int mode, NSArray<NSNumber *> *params) {

@@ -137,4 +137,33 @@ describe('iOS motion aiming', () => {
     expect(startGta6Triggers(getSettings())).toBe(false);
     expect(setMotionReporting).toHaveBeenCalledTimes(2);
   });
+
+  test('turns motion off immediately without losing its sensitivity', () => {
+    const sendAim = jest.fn<SendAim>();
+    const settings = {
+      ...getSettings(),
+      gta6_trigger_tuning: {motion_enabled: 1, motion: 185},
+    } as ReturnType<typeof getSettings>;
+    startGta6Triggers(settings, sendAim);
+    DeviceEventEmitter.emit('onMotion', {...still, rz: 1, time: 100});
+    DeviceEventEmitter.emit('onMotionTick', 100.008);
+    expect(sendAim.mock.calls[0][0][0]).toBeLessThan(0);
+
+    DeviceEventEmitter.emit('SETTINGS_CHANGED', {
+      ...settings,
+      gta6_trigger_tuning: {...settings.gta6_trigger_tuning, motion_enabled: 0},
+    });
+    expect(setMotionReporting).toHaveBeenLastCalledWith(false);
+    expect(sendAim).toHaveBeenLastCalledWith([0, 0]);
+    DeviceEventEmitter.emit('onMotionTick', 100.012);
+    expect(sendAim).toHaveBeenCalledTimes(2);
+
+    DeviceEventEmitter.emit('SETTINGS_CHANGED', settings);
+    expect(setMotionReporting).toHaveBeenLastCalledWith(true);
+    DeviceEventEmitter.emit('onMotionTick', 100.016);
+    expect(sendAim).toHaveBeenLastCalledWith([0, 0]);
+    DeviceEventEmitter.emit('onMotion', {...still, rz: 1, time: 100.02});
+    DeviceEventEmitter.emit('onMotionTick', 100.028);
+    expect(sendAim.mock.lastCall?.[0][0]).toBeLessThan(0);
+  });
 });

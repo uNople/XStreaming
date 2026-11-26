@@ -160,7 +160,7 @@ function SettingsScreen({navigation}) {
           />
 
           <SettingItem
-            title={t('GTA 6 adaptive triggers')}
+            title={t('Controller tuning')}
             description={t('gta6_triggers_desc')}
             onPress={() => {
               navigation.navigate('Gta6Triggers');

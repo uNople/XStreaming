@@ -56,7 +56,7 @@ export const startGta6Triggers = (
     return false;
   }
   const events = new NativeEventEmitter(GamepadManager);
-  if (settings.gta6_triggers && GamepadManager.setAdaptiveTriggers) {
+  if (GamepadManager.setAdaptiveTriggers) {
     driver = new Gta6TriggerDriver((left, right) =>
       GamepadManager.setAdaptiveTriggers(
         left.mode,
@@ -74,14 +74,29 @@ export const startGta6Triggers = (
   }
 
   if (sendAim && GamepadManager.setMotionReporting) {
-    const aim = new MotionAim(
-      normaliseMotionTuning(settings.gta6_trigger_tuning),
-    );
+    let aim: MotionAim | null = null;
+    const applyMotion = (changed: Settings) => {
+      const tuning = normaliseMotionTuning(changed.gta6_trigger_tuning);
+      if (tuning.motion_enabled && tuning.motion > 0) {
+        if (aim) {
+          aim.configure(tuning);
+        } else {
+          aim = new MotionAim(tuning);
+          motionReporting = true;
+          GamepadManager.setMotionReporting(true);
+        }
+      } else if (aim) {
+        aim = null;
+        motionReporting = false;
+        GamepadManager.setMotionReporting(false);
+        sendAim([0, 0]);
+      }
+    };
     subscriptions.push(
       events.addListener('onMotion', (reading: MotionReading) => {
         // Yaw projects the gyro onto up, so both vectors need the same axes.
         // Negate Apple's acceleration to obtain the desktop's up vector.
-        aim.sample(
+        aim?.sample(
           dualSenseAxes(
             reading.rx * DEGREES,
             reading.ry * DEGREES,
@@ -94,15 +109,14 @@ export const startGta6Triggers = (
           driver?.vehicle ?? false,
         );
       }),
-      events.addListener('onMotionTick', (time: number) =>
-        sendAim(aim.advance(time)),
-      ),
-      DeviceEventEmitter.addListener(SETTINGS_CHANGED_EVENT, changed =>
-        aim.configure(normaliseMotionTuning(changed?.gta6_trigger_tuning)),
-      ),
+      events.addListener('onMotionTick', (time: number) => {
+        if (aim) {
+          sendAim(aim.advance(time));
+        }
+      }),
+      DeviceEventEmitter.addListener(SETTINGS_CHANGED_EVENT, applyMotion),
     );
-    motionReporting = true;
-    GamepadManager.setMotionReporting(true);
+    applyMotion(settings);
   }
   return motionReporting;
 };
@@ -121,10 +135,6 @@ export const stopGta6Triggers = () => {
 };
 
 /** Hands a rumble packet to the trigger profile; the caller still plays the body rumble itself. */
-export const gta6Rumble = (rumbleData: any, durationMs: number) => {
-  driver?.onRumble(
-    rumbleData?.weakMagnitude,
-    rumbleData?.strongMagnitude,
-    durationMs,
-  );
+export const gta6Rumble = (rumbleData: any) => {
+  driver?.onRumble(rumbleData?.weakMagnitude, rumbleData?.strongMagnitude);
 };

@@ -3,17 +3,10 @@ import {StyleSheet, View, ScrollView} from 'react-native';
 import {Button, RadioButton, Switch, Text, useTheme} from 'react-native-paper';
 import {useTranslation} from 'react-i18next';
 import Slider from '@react-native-community/slider';
-import {getSettings, saveSettings} from '../store/settingStore';
-import {
-  GTA6_TUNING,
-  Gta6Tuning,
-  normaliseTuning,
-} from '../triggers/gta6Profile';
-import {
-  MOTION_TUNING,
-  MotionTuning,
-  normaliseMotionTuning,
-} from '../triggers/motionAim';
+import {getSettings, saveSettings, Settings} from '../store/settingStore';
+import {GTA6_TUNING, normaliseTuning} from '../triggers/gta6Profile';
+import {MOTION_TUNING, normaliseMotionTuning} from '../triggers/motionAim';
+import {maxRumbleStrength, rumbleStrength} from '../utils/controllerRumble';
 
 const GROUPS: {id: 'foot' | 'vehicle'; title: string}[] = [
   {id: 'foot', title: 'On foot'},
@@ -27,84 +20,71 @@ const describe = (max: number, value: number) => {
   return value === 0 ? 'Off' : String(value);
 };
 
-function Gta6TriggersScreen() {
+function ControllerTuning({maxHeight}: {maxHeight?: number}) {
   const {t} = useTranslation();
   const theme = useTheme();
 
-  const [enabled, setEnabled] = React.useState(
-    () => !!getSettings().gta6_triggers,
-  );
-  // Trigger and motion values are kept together in one saved object.
-  const [tuning, setTuning] = React.useState<Gta6Tuning & MotionTuning>(() => ({
-    ...normaliseTuning(getSettings().gta6_trigger_tuning),
-    ...normaliseMotionTuning(getSettings().gta6_trigger_tuning as any),
-  }));
-
-  // Every change is saved straight away, so a running stream picks it up.
-  const save = (
-    nextEnabled: boolean,
-    nextTuning: Gta6Tuning & MotionTuning,
-  ) => {
-    setEnabled(nextEnabled);
-    setTuning(nextTuning);
-    saveSettings({
-      ...getSettings(),
-      gta6_triggers: nextEnabled,
-      gta6_trigger_tuning: nextTuning,
-    });
+  const [settings, setSettings] = React.useState(getSettings);
+  const enabled = settings.gta6_triggers;
+  const tuning = {
+    ...normaliseTuning(settings.gta6_trigger_tuning),
+    ...normaliseMotionTuning(settings.gta6_trigger_tuning),
   };
+  const strength = rumbleStrength(settings);
+
+  const save = (patch: Partial<Settings>) => {
+    const next = {...getSettings(), ...patch};
+    setSettings(next);
+    saveSettings(next);
+  };
+  const setTuning = (key: keyof typeof tuning, value: number) =>
+    save({
+      gta6_trigger_tuning: {...getSettings().gta6_trigger_tuning, [key]: value},
+    });
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.row}>
+    <ScrollView style={maxHeight ? {maxHeight} : styles.container}>
+      <View style={styles.switchRow}>
         <Text variant="titleMedium" style={styles.rowLabel}>
-          {t('GTA 6 adaptive triggers')}
+          {t('Controller rumble')}
         </Text>
-        <Switch value={enabled} onValueChange={value => save(value, tuning)} />
+        <Switch
+          accessibilityLabel={t('Controller rumble')}
+          value={settings.vibration}
+          onValueChange={value => save({vibration: value})}
+        />
       </View>
-      <Text variant="bodySmall" style={styles.note}>
-        {t('gta6_triggers_note')}
-      </Text>
-
-      {GROUPS.map(group => (
-        <View key={group.id}>
-          <Text variant="titleMedium" style={styles.group}>
-            {t(group.title)}
-          </Text>
-          {GTA6_TUNING.filter(item => item.group === group.id).map(item => (
-            <View key={item.key}>
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>{t(item.label)}</Text>
-                <Text>{describe(item.max, tuning[item.key])}</Text>
-              </View>
-              <Slider
-                style={styles.slider}
-                value={tuning[item.key]}
-                minimumValue={item.min}
-                maximumValue={item.max}
-                step={1}
-                disabled={!enabled}
-                onValueChange={value =>
-                  save(enabled, {...tuning, [item.key]: value})
-                }
-                minimumTrackTintColor={theme.colors.primary}
-                maximumTrackTintColor="grey"
-              />
-            </View>
-          ))}
-        </View>
-      ))}
-
-      <Text variant="titleMedium" style={styles.group}>
-        {t('Motion aiming')}
-      </Text>
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>{t('Rumble strength')}</Text>
+        <Text>{`${strength}%`}</Text>
+      </View>
+      <Slider
+        accessibilityLabel={t('Rumble strength')}
+        style={styles.slider}
+        value={strength}
+        minimumValue={0}
+        maximumValue={maxRumbleStrength}
+        step={1}
+        onValueChange={value => save({rumble_strength: value})}
+        minimumTrackTintColor={theme.colors.primary}
+        maximumTrackTintColor="grey"
+      />
+      <View style={styles.switchRow}>
+        <Text variant="titleMedium" style={styles.rowLabel}>
+          {t('Motion aiming')}
+        </Text>
+        <Switch
+          accessibilityLabel={t('Motion aiming')}
+          value={!!tuning.motion_enabled}
+          onValueChange={value => setTuning('motion_enabled', value ? 1 : 0)}
+        />
+      </View>
       <Text variant="bodySmall" style={styles.note}>
         {t('gta6_motion_note')}
       </Text>
-      {MOTION_TUNING.map(item => {
+      {MOTION_TUNING.filter(item => item.key !== 'motion_enabled').map(item => {
         const value = tuning[item.key];
-        const change = (next: number) =>
-          save(enabled, {...tuning, [item.key]: next});
+        const change = (next: number) => setTuning(item.key, next);
         if (item.choices) {
           return (
             <View key={item.key}>
@@ -154,11 +134,58 @@ function Gta6TriggersScreen() {
         );
       })}
 
+      <View style={styles.row}>
+        <Text variant="titleMedium" style={styles.rowLabel}>
+          {t('GTA 6 adaptive triggers')}
+        </Text>
+        <Switch
+          accessibilityLabel={t('GTA 6 adaptive triggers')}
+          value={enabled}
+          onValueChange={value => save({gta6_triggers: value})}
+        />
+      </View>
+      <Text variant="bodySmall" style={styles.note}>
+        {t('gta6_triggers_note')}
+      </Text>
+
+      {GROUPS.map(group => (
+        <View key={group.id}>
+          <Text variant="titleMedium" style={styles.group}>
+            {t(group.title)}
+          </Text>
+          {GTA6_TUNING.filter(item => item.group === group.id).map(item => (
+            <View key={item.key}>
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>{t(item.label)}</Text>
+                <Text>{describe(item.max, tuning[item.key])}</Text>
+              </View>
+              <Slider
+                style={styles.slider}
+                value={tuning[item.key]}
+                minimumValue={item.min}
+                maximumValue={item.max}
+                step={1}
+                disabled={!enabled}
+                onValueChange={value => setTuning(item.key, value)}
+                minimumTrackTintColor={theme.colors.primary}
+                maximumTrackTintColor="grey"
+              />
+            </View>
+          ))}
+        </View>
+      ))}
+
       <Button
         mode="outlined"
         style={styles.reset}
         onPress={() =>
-          save(enabled, {...normaliseTuning(), ...normaliseMotionTuning()})
+          save({
+            rumble_strength: 100,
+            gta6_trigger_tuning: {
+              ...normaliseTuning(),
+              ...normaliseMotionTuning(),
+            },
+          })
         }>
         {t('Reset to defaults')}
       </Button>
@@ -203,4 +230,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Gta6TriggersScreen;
+export default ControllerTuning;

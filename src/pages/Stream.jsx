@@ -2,6 +2,7 @@ import React from 'react';
 import {
   View,
   Alert,
+  DeviceEventEmitter,
   NativeModules,
   Vibration,
   NativeEventEmitter,
@@ -26,7 +27,11 @@ import Orientation from 'react-native-orientation-locker';
 import RNRestart from 'react-native-restart';
 import XcloudApi from '../xCloud';
 import {useSelector} from 'react-redux';
-import {getSettings, saveSettings} from '../store/settingStore';
+import {
+  getSettings,
+  saveSettings,
+  SETTINGS_CHANGED_EVENT,
+} from '../store/settingStore';
 import {
   gta6Rumble,
   startGta6Triggers,
@@ -39,7 +44,9 @@ import VirtualGamepad from '../components/VirtualGamepad';
 import CustomVirtualGamepad from '../components/CustomVirtualGamepad';
 import PerfPanel from '../components/PerfPanel';
 import Display from '../components/Display';
+import ControllerTuning from './Gta6Triggers';
 import {GAMEPAD_MAPING} from '../common';
+import {controllerRumble, rumbleStrength} from '../utils/controllerRumble';
 import {createGamepadOutput, gamepadButtons} from '../utils/gamepadOutput';
 
 const log = debugFactory('StreamScreen');
@@ -101,6 +108,7 @@ function StreamScreen({navigation, route}) {
   const [hasController, setHasController] = React.useState(null);
   const [showWebview, setShowWebview] = React.useState(false);
   const [showDisplayModal, setShowDisplayModal] = React.useState(false);
+  const [showControllerTuning, setShowControllerTuning] = React.useState(false);
   const [showMessageModal, setShowMessageModal] = React.useState(false);
   const [showVirtualGamepad, setShowVirtualGamepad] = React.useState(false);
   const [connectState, setConnectState] = React.useState('');
@@ -117,6 +125,7 @@ function StreamScreen({navigation, route}) {
   const publishGamepad = React.useRef(null);
   const syncGamepad = React.useRef(null);
   const warnedAboutController = React.useRef(false);
+  const liveSettings = React.useRef(null);
 
   React.useEffect(() => {
     if (connectState !== CONNECTED || hasController || showVirtualGamepad) {
@@ -130,6 +139,24 @@ function StreamScreen({navigation, route}) {
   React.useEffect(() => {
     const _settings = getSettings();
     setSettings(_settings);
+    liveSettings.current = _settings;
+    const settingsListener = DeviceEventEmitter.addListener(
+      SETTINGS_CHANGED_EVENT,
+      changed => {
+        const previous = liveSettings.current;
+        liveSettings.current = changed;
+        if (
+          previous.vibration &&
+          rumbleStrength(previous) > 0 &&
+          (!changed.vibration || rumbleStrength(changed) === 0)
+        ) {
+          GamepadManager.stopBodyRumble?.();
+          if (previous.vibration_mode === 'Device') {
+            Vibration.cancel();
+          }
+        }
+      },
+    );
 
     const normaliseAxis = value => {
       if (_settings.dead_zone) {
@@ -295,12 +322,14 @@ function StreamScreen({navigation, route}) {
     return () => {
       Orientation.unlockAllOrientations();
       listening = false;
+      settingsListener.remove();
       presenceListener.remove();
       controllerListener?.remove();
       output.dispose();
       publishGamepad.current = null;
       syncGamepad.current = null;
       stopGta6Triggers();
+      GamepadManager.stopBodyRumble?.();
     };
   }, [
     route.params?.sessionId,
@@ -500,62 +529,25 @@ function StreamScreen({navigation, route}) {
         },
       ]);
     }
-    if (type === 'deviceVibration') {
+    if (type === 'deviceVibration' || type === 'nativeVibration') {
       const {rumbleData} = message;
-      // The web player divides the packet's duration by ten.
-      gta6Rumble(rumbleData, rumbleData.duration * 10);
-      if (rumbleData.strongMagnitude === 0 || rumbleData.weakMagnitude === 0) {
+      gta6Rumble(rumbleData);
+      const activeSettings = liveSettings.current;
+      if (type === 'nativeVibration') {
+        GamepadManager.rumble(
+          rumbleData.duration,
+          ...controllerRumble(activeSettings, rumbleData),
+        );
+      } else if (
+        !activeSettings.vibration ||
+        rumbleStrength(activeSettings) === 0 ||
+        rumbleData.strongMagnitude === 0 ||
+        rumbleData.weakMagnitude === 0
+      ) {
         Vibration.cancel();
       } else {
         Vibration.vibrate(rumbleData.duration / 10);
       }
-    }
-    if (type === 'nativeVibration') {
-      const {rumbleData} = message;
-      gta6Rumble(rumbleData, rumbleData.duration * 10);
-      let weakMagnitude = rumbleData.weakMagnitude * 65535;
-      let strongMagnitude = rumbleData.strongMagnitude * 65535;
-      let leftTrigger = rumbleData.leftTrigger * 65535;
-      let rightTrigger = rumbleData.rightTrigger * 65535;
-
-      switch (settings.rumble_intensity) {
-        case 1:
-          weakMagnitude = weakMagnitude * 0.5;
-          strongMagnitude = strongMagnitude * 0.4;
-          break;
-        case 2:
-          weakMagnitude = weakMagnitude * 0.8;
-          strongMagnitude = strongMagnitude * 0.9;
-          break;
-        case 4:
-          weakMagnitude = weakMagnitude * 1.5;
-          strongMagnitude = strongMagnitude * 2;
-          break;
-        case 5:
-          weakMagnitude = weakMagnitude * 2;
-          strongMagnitude = strongMagnitude * 2.5;
-          break;
-      }
-
-      if (weakMagnitude > 65535) {
-        weakMagnitude = 65535;
-      }
-      if (strongMagnitude > 65535) {
-        strongMagnitude = 65535;
-      }
-      if (leftTrigger > 65535) {
-        leftTrigger = 65535;
-      }
-      if (rightTrigger > 65535) {
-        rightTrigger = 65535;
-      }
-      GamepadManager.rumble(
-        rumbleData.duration,
-        weakMagnitude,
-        strongMagnitude,
-        leftTrigger,
-        rightTrigger,
-      );
     }
     if (type === 'performance') {
       const oldPerf = performance;
@@ -686,8 +678,7 @@ function StreamScreen({navigation, route}) {
     options => {
       postData2Webview('refreshVideo', options);
       settings.display_options = options;
-      // setSettings(settings);
-      saveSettings(settings);
+      saveSettings({...getSettings(), display_options: options});
     },
     [settings],
   );
@@ -726,6 +717,24 @@ function StreamScreen({navigation, route}) {
       )}
 
       {renderVirtualGamepad()}
+
+      <Portal>
+        <Modal
+          visible={showControllerTuning}
+          onDismiss={() => setShowControllerTuning(false)}
+          contentContainerStyle={styles.modal}>
+          <Card>
+            <Card.Content>
+              {showControllerTuning && (
+                <ControllerTuning maxHeight={modalMaxHeight - 48} />
+              )}
+              <Button onPress={() => setShowControllerTuning(false)}>
+                {t('Done')}
+              </Button>
+            </Card.Content>
+          </Card>
+        </Modal>
+      </Portal>
 
       <Portal>
         <Modal
@@ -798,6 +807,16 @@ function StreamScreen({navigation, route}) {
             <Card.Content>
               <ScrollView style={{maxHeight: modalMaxHeight}}>
                 <List.Section>
+                  {connectState === CONNECTED && (
+                    <List.Item
+                      title={t('Controller tuning')}
+                      background={background}
+                      onPress={() => {
+                        handleCloseModal();
+                        setShowControllerTuning(true);
+                      }}
+                    />
+                  )}
                   {connectState === CONNECTED && (
                     <List.Item
                       title={t('Toggle Performance')}
@@ -914,7 +933,11 @@ function StreamScreen({navigation, route}) {
             allowsInlineMediaPlayback={true}
             androidLayerType={'hardware'}
             injectedJavaScriptObject={{
-              settings,
+              // Keep the packets available to the trigger profile when body rumble is muted.
+              settings:
+                Platform.OS === 'ios'
+                  ? {...settings, vibration: true}
+                  : settings,
               streamType: route.params?.streamType,
             }}
             onLoadStart={() => {

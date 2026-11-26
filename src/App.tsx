@@ -227,7 +227,7 @@ function App() {
                 <RootStack.Screen
                   name="Gta6Triggers"
                   component={Gta6TriggersScreen}
-                  options={{title: t('GTA 6 adaptive triggers')}}
+                  options={{title: t('Controller tuning')}}
                 />
               </RootStack.Group>
 
